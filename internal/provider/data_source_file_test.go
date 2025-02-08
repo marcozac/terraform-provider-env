@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -15,17 +16,25 @@ import (
 
 const fileDataSourceTestOutputName = "test"
 
-//go:embed testdata/.env.test
-var testFileDataSourceData []byte
+var (
+	//go:embed testdata/.env.test
+	testFileDataSourceData []byte
+
+	//go:embed testdata/.env.err.test
+	testFileDataSourceDataErr []byte
+)
 
 func TestFileDataSource_notRequired(t *testing.T) {
-	filename := testFileDataSourceWriteFileHelper(t)
+	dir := t.TempDir()
+	filename := testFileDataSourceWriteFile(filepath.Join(dir, ".env"), testFileDataSourceData)
+	errFilename := testFileDataSourceWriteFile(filepath.Join(dir, ".env.err"), testFileDataSourceDataErr)
+
 	resource.UnitTest(t, resource.TestCase{
 		TerraformVersionChecks:   getenvFunctionTerraformVersionChecks,
 		ProtoV6ProviderFactories: protoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testFileDataSourceConfig(filename, false),
+				Config: testFileDataSourceConfig(filename),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownOutputValue(
 						fileDataSourceTestOutputName,
@@ -43,43 +52,53 @@ func TestFileDataSource_notRequired(t *testing.T) {
 		ProtoV6ProviderFactories: protoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testFileDataSourceConfig("not_existing_file", false),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownOutputValue(
-						fileDataSourceTestOutputName,
-						knownvalue.MapSizeExact(0),
-					),
-				},
+				Config: fmt.Sprintf(`
+					data "env_file" "test" {}
+					output "%s" {
+						value = data.env_file.test.result
+						sensitive = true
+					}`,
+					fileDataSourceTestOutputName,
+				),
+				ExpectError: regexp.MustCompile("Failed to open file"),
+			},
+		},
+	})
+	resource.UnitTest(t, resource.TestCase{
+		TerraformVersionChecks:   getenvFunctionTerraformVersionChecks,
+		ProtoV6ProviderFactories: protoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testFileDataSourceConfig(errFilename),
+				ExpectError: regexp.MustCompile("Failed to parse file"),
 			},
 		},
 	})
 }
 
-// testFileDataSourceWriteFileHelper writes the test data to a file and returns the filename.
-func testFileDataSourceWriteFileHelper(t *testing.T) string {
-	t.Helper()
-	filename := filepath.Join(t.TempDir(), ".env")
+// testFileDataSourceWriteFileHelper writes the test data to a file and returns
+// the filename as is.
+func testFileDataSourceWriteFile(filename string, data []byte) string {
 	f, err := os.Create(filename)
 	if err != nil {
 		panic(err)
 	}
 	defer f.Close()
-	if _, err := f.Write(testFileDataSourceData); err != nil {
+	if _, err := f.Write(data); err != nil {
 		panic(err)
 	}
 	return filename
 }
 
-func testFileDataSourceConfig(filename string, required bool) string {
+func testFileDataSourceConfig(filename string) string {
 	return fmt.Sprintf(`
 		data "env_file" "test" {
 			path = "%s"
-			required = %t
 		}
 		output "%s" {
 			value = data.env_file.test.result
 			sensitive = true
 		}`,
-		filename, required, fileDataSourceTestOutputName,
+		filename, fileDataSourceTestOutputName,
 	)
 }

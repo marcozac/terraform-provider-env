@@ -2,16 +2,12 @@ package provider
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"io/fs"
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/joho/godotenv"
@@ -26,9 +22,8 @@ type fileDataSource struct {
 }
 
 type fileDataSourceModel struct {
-	Path     types.String `tfsdk:"path"`
-	Required types.Bool   `tfsdk:"required"`
-	Result   types.Map    `tfsdk:"result"`
+	Path   types.String `tfsdk:"path"`
+	Result types.Map    `tfsdk:"result"`
 }
 
 func (d *fileDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -48,13 +43,6 @@ func (d *fileDataSource) Schema(ctx context.Context, req datasource.SchemaReques
 					"Defaults to `.env`.",
 				MarkdownDescription: "Path to the file with the environment variables." +
 					"Defaults to `.env`.",
-			},
-			"required": schema.BoolAttribute{
-				Optional:    true,
-				Computed:    true,
-				Description: "Whether the file is required.",
-				MarkdownDescription: "Whether the file is required." +
-					"Prevents the data source from returning an error if the file is not found.",
 			},
 			"result": schema.MapAttribute{
 				ElementType:         types.StringType,
@@ -79,16 +67,16 @@ func (d *fileDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		d.data.Path = types.StringValue(".env")
 	}
 
-	f, ok := d.open(resp, d.data.Path.ValueString())
-	if !ok {
-		d.setResult(ctx, resp, make(map[string]attr.Value))
+	f, err := os.Open(d.data.Path.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to open file", err.Error())
 		return
 	}
 	defer f.Close()
 
 	env, err := godotenv.Parse(f)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed To Parse File", err.Error())
+		resp.Diagnostics.AddError("Failed to parse file", err.Error())
 		return
 	}
 
@@ -97,28 +85,6 @@ func (d *fileDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		m[k] = types.StringValue(v)
 	}
 	d.setResult(ctx, resp, m)
-}
-
-func (d *fileDataSource) open(resp *datasource.ReadResponse, filename string) (f *os.File, ok bool) {
-	f, err := os.Open(filename)
-	if err == nil {
-		return f, true
-	}
-	switch {
-	case !errors.Is(err, fs.ErrNotExist):
-		resp.Diagnostics.AddError("Failed To Open File", err.Error())
-	case d.data.Required.ValueBool():
-		resp.Diagnostics.AddAttributeError(path.Root("path"),
-			"File Not Found",
-			fmt.Sprintf("File %q not found", filename),
-		)
-	default:
-		resp.Diagnostics.AddAttributeWarning(path.Root("path"),
-			"File Not Found",
-			fmt.Sprintf("File %q not found, returning empty result", filename),
-		)
-	}
-	return
 }
 
 func (d *fileDataSource) setResult(ctx context.Context, resp *datasource.ReadResponse, elements map[string]attr.Value) {
