@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
+const ProviderName = "env"
+
 func New() func() provider.Provider {
 	return func() provider.Provider {
 		return &envProvider{}
@@ -23,7 +25,7 @@ var (
 type envProvider struct{}
 
 func (p *envProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "env"
+	resp.TypeName = ProviderName
 }
 
 func (p *envProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
@@ -41,5 +43,7 @@ func (p *envProvider) DataSources(ctx context.Context) []func() datasource.DataS
 }
 
 func (p *envProvider) Functions(ctx context.Context) []func() function.Function {
-	return []func() function.Function{}
+	return []func() function.Function{
+		NewGetenvFunction,
+	}
 }
