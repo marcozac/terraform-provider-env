@@ -6,6 +6,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
@@ -29,6 +30,9 @@ func (p *envProvider) Metadata(ctx context.Context, req provider.MetadataRequest
 }
 
 func (p *envProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "A provider for interacting with environment variables.",
+	}
 }
 
 func (p *envProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
@@ -39,7 +43,9 @@ func (p *envProvider) Resources(ctx context.Context) []func() resource.Resource 
 }
 
 func (p *envProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewFileDataSource,
+	}
 }
 
 func (p *envProvider) Functions(ctx context.Context) []func() function.Function {
